@@ -53,16 +53,22 @@ def get_date(fp, ext, photo_exts):
     return datetime.datetime.fromtimestamp(os.path.getmtime(fp)), "mtime"
 
 
-def safe_copy(src, dst_dir, name):
+def safe_copy(src, dst_dir, name, dt=None):
     os.makedirs(dst_dir, exist_ok=True)
     dst = os.path.join(dst_dir, name)
     if os.path.exists(dst) and os.path.getsize(src) == os.path.getsize(dst):
         return "skipped"
     if os.path.exists(dst):
         base, ext = os.path.splitext(name)
+        # Rename with creation date instead of _1, _2 ...
+        if dt is None:
+            dt = datetime.datetime.fromtimestamp(os.path.getmtime(src))
+        date_str = dt.strftime("%Y-%m-%d_%H%M%S")
+        dst = os.path.join(dst_dir, f"{base}_{date_str}{ext}")
+        # Fallback counter if date-renamed file also exists
         c = 1
         while os.path.exists(dst):
-            dst = os.path.join(dst_dir, f"{base}_{c}{ext}")
+            dst = os.path.join(dst_dir, f"{base}_{date_str}_{c}{ext}")
             c += 1
     shutil.copy2(src, dst)
     return "copied"
@@ -259,14 +265,15 @@ class App(ctk.CTk):
             fname = os.path.basename(fp)
 
             try:
+                file_dt, _ = get_date(fp, ext, photo_exts)
+
                 if fp in duplicates:
-                    r = safe_copy(fp, os.path.join(dst, "_Duplikate"), fname)
+                    r = safe_copy(fp, os.path.join(dst, "_Duplikate"), fname, file_dt)
                     if r == "copied": stats["dupes"] += 1
                     stats[r] += 1
                     continue
 
-                dt, _ = get_date(fp, ext, photo_exts)
-                year = str(dt.year)
+                year = str(file_dt.year)
 
                 if by_type:
                     subdir = "Fotos" if ext in photo_exts else "Videos"
@@ -274,7 +281,7 @@ class App(ctk.CTk):
                 else:
                     dst_dir = os.path.join(dst, year)
 
-                r = safe_copy(fp, dst_dir, fname)
+                r = safe_copy(fp, dst_dir, fname, file_dt)
                 stats[r] += 1
 
             except Exception as e:

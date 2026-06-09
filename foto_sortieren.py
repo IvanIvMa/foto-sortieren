@@ -13,15 +13,15 @@ VORAUSSETZUNGEN:
 WAS DAS SKRIPT TUT:
   1. Scannt den SOURCE-Ordner nach Fotos und Videos
   2. Liest das EXIF-Aufnahmedatum (DateTimeOriginal) aus Fotos
-  3. Fuer Videos und Fotos ohne EXIF: Datum aus Dateiname oder Aenderungsdatum
-  4. Erkennt Duplikate (gleicher Dateiname + Dateigroesse)
+  3. Für Videos und Fotos ohne EXIF: Datum aus Dateiname oder Änderungsdatum
+  4. Erkennt Duplikate (gleicher Dateiname + Dateigröße)
   5. Kopiert alles in DEST nach Struktur: Jahr/Fotos/ und Jahr/Videos/
-  6. Duplikate -> DEST/_Duplikate/ (zur manuellen Pruefung)
+  6. Duplikate → DEST/_Duplikate/ (zur manuellen Prüfung)
 
 WICHTIG:
-  - Originalordner wird NICHT veraendert (nur kopieren, nie loeschen)
-  - Du kannst das Skript mehrfach ausfuehren - bereits kopierte Dateien werden uebersprungen
-  - Nach Pruefung des Ergebnisses kannst du den Originalordner selbst aufraeumen
+  - Originalordner wird NICHT verändert (nur kopieren, nie löschen)
+  - Du kannst das Skript mehrfach ausführen – bereits kopierte Dateien werden übersprungen
+  - Nach Prüfung des Ergebnisses kannst du den Originalordner selbst aufräumen
 """
 
 import os
@@ -31,10 +31,17 @@ import re
 import sys
 from collections import defaultdict
 
-# --- KONFIGURATION ---
+# ─── KONFIGURATION ────────────────────────────────────────────────────────────
+# Quellordner (wo deine Fotos jetzt liegen)
 SOURCE = '/Volumes/Verbatim/Pics'
-DEST   = '/Volumes/SSD_IM/Verbatim Media'
+
+# Zielordner (wo die sortierte Struktur erstellt wird)
+# Tipp: Auf derselben Festplatte lassen, damit kein Kopieren über USB nötig ist
+DEST = '/Volumes/SSD_IM/Verbatim Media'
+
+# Diese Unterordner im SOURCE werden ignoriert
 SKIP_DIRS = {'Pics_Sortiert', '_Sortiert', '_Duplikate'}
+# ─────────────────────────────────────────────────────────────────────────────
 
 PHOTO_EXT = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp', '.heic', '.heif',
              '.raw', '.cr2', '.nef', '.arw', '.dng', '.gif', '.webp'}
@@ -141,32 +148,40 @@ def main():
     try:
         from PIL import Image
     except ImportError:
-        print("FEHLER: Pillow nicht installiert. Bitte: pip3 install Pillow")
+        print("FEHLER: Pillow nicht installiert.")
+        print("Bitte ausführen: pip3 install Pillow")
         sys.exit(1)
 
     if not os.path.exists(SOURCE):
         print(f"FEHLER: Quellordner nicht gefunden: {SOURCE}")
+        print("Bitte SOURCE-Variable oben im Skript anpassen.")
         sys.exit(1)
 
     print("Schritt 1/3: Sammle alle Mediendateien...")
     files = collect_media_files(SOURCE, SKIP_DIRS)
-    print(f"  -> {len(files):,} Mediendateien gefunden")
+    print(f"  → {len(files):,} Mediendateien gefunden")
 
-    print("Schritt 2/3: Erkenne Duplikate...")
+    print("\nSchritt 2/3: Erkenne Duplikate...")
     duplicates = find_duplicates(files)
-    print(f"  -> {len(duplicates):,} ueberfluessige Kopien erkannt")
+    print(f"  → {len(duplicates):,} überflüssige Kopien erkannt")
 
     total = len(files)
-    print(f"Schritt 3/3: Sortiere {total:,} Dateien...")
+    print(f"\nSchritt 3/3: Sortiere {total:,} Dateien...")
+    print("  (Das kann eine Weile dauern – bitte warten)\n")
 
-    stats = {'copied': 0, 'skipped': 0, 'errors': 0,
-             'photos': 0, 'videos': 0, 'dupes': 0,
-             'exif': 0, 'filename': 0, 'mtime': 0}
+    stats = {
+        'copied': 0, 'skipped': 0, 'errors': 0,
+        'photos': 0, 'videos': 0, 'dupes': 0,
+        'exif': 0, 'filename': 0, 'mtime': 0
+    }
     error_log = []
 
     for i, fp in enumerate(files):
         if i > 0 and i % 1000 == 0:
-            print(f"  {i:,}/{total:,} ({i/total*100:.0f}%)  kopiert: {stats['copied']:,}")
+            pct = i / total * 100
+            print(f"  {i:,}/{total:,} ({pct:.0f}%)  "
+                  f"kopiert: {stats['copied']:,}  "
+                  f"übersprungen: {stats['skipped']:,}")
 
         ext = os.path.splitext(fp)[1].lower()
         filename = os.path.basename(fp)
@@ -182,6 +197,7 @@ def main():
             dt, source = get_best_date(fp, ext)
             stats[source] = stats.get(source, 0) + 1
             year = str(dt.year)
+
             subdir = 'Fotos' if ext in PHOTO_EXT else 'Videos'
             if ext in PHOTO_EXT:
                 stats['photos'] += 1
@@ -195,15 +211,36 @@ def main():
             stats['errors'] += 1
             error_log.append(f"{fp}: {e}")
 
-    print(f"\nFERTIG! Kopiert: {stats['copied']:,} | Uebersprungen: {stats['skipped']:,} | Fehler: {stats['errors']:,}")
-    print(f"Fotos: {stats['photos']:,} | Videos: {stats['videos']:,} | Duplikate: {stats['dupes']:,}")
-    print(f"Datum-Quellen: EXIF={stats['exif']:,} Dateiname={stats['filename']:,} mtime={stats['mtime']:,}")
-    print(f"Ergebnis in: {DEST}")
+    print(f"\n{'=' * 60}")
+    print("  FERTIG!")
+    print(f"{'=' * 60}")
+    print(f"  Kopiert:              {stats['copied']:,}")
+    print(f"  Übersprungen:         {stats['skipped']:,}")
+    print(f"  Fehler:               {stats['errors']:,}")
+    print()
+    print(f"  davon Fotos:          {stats['photos']:,}")
+    print(f"  davon Videos:         {stats['videos']:,}")
+    print(f"  davon Duplikate:      {stats['dupes']:,}")
+    print()
+    print("  Datum-Quellen:")
+    print(f"    EXIF (genau):       {stats['exif']:,}")
+    print(f"    Dateiname:          {stats['filename']:,}")
+    print(f"    Änderungsdatum:     {stats['mtime']:,}")
+    print()
+    print(f"  Ergebnis in: {DEST}")
 
     if error_log:
+        log_path = os.path.join(DEST, '_fehler.txt')
         os.makedirs(DEST, exist_ok=True)
-        with open(os.path.join(DEST, '_fehler.txt'), 'w', encoding='utf-8') as f:
+        with open(log_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(error_log))
+        print(f"\n  Fehlerprotokoll: {log_path}")
+
+    print()
+    print("NÄCHSTE SCHRITTE:")
+    print(f"  1. Prüfe den sortierten Ordner: {DEST}")
+    print(f"  2. Schau dir _Duplikate/ an und lösche was du nicht brauchst")
+    print(f"  3. Wenn alles gut aussieht: lösche den alten Ordner {SOURCE}")
 
 
 if __name__ == '__main__':

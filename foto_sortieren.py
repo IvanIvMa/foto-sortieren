@@ -90,7 +90,7 @@ def get_best_date(filepath, ext):
     return datetime.datetime.fromtimestamp(mtime), 'mtime'
 
 
-def safe_copy(src, dst_dir, filename):
+def safe_copy(src, dst_dir, filename, dt=None):
     os.makedirs(dst_dir, exist_ok=True)
     dst = os.path.join(dst_dir, filename)
     if os.path.exists(dst):
@@ -99,10 +99,16 @@ def safe_copy(src, dst_dir, filename):
                 return 'skipped'
         except Exception:
             pass
+        # Rename with creation date instead of _1, _2 ...
         base, ext = os.path.splitext(filename)
+        if dt is None:
+            dt = datetime.datetime.fromtimestamp(os.path.getmtime(src))
+        date_str = dt.strftime('%Y-%m-%d_%H%M%S')
+        dst = os.path.join(dst_dir, f"{base}_{date_str}{ext}")
+        # Fallback counter if date-renamed file also exists
         counter = 1
         while os.path.exists(dst):
-            dst = os.path.join(dst_dir, f"{base}_{counter}{ext}")
+            dst = os.path.join(dst_dir, f"{base}_{date_str}_{counter}{ext}")
             counter += 1
     shutil.copy2(src, dst)
     return 'copied'
@@ -187,14 +193,15 @@ def main():
         filename = os.path.basename(fp)
 
         try:
+            dt, source = get_best_date(fp, ext)
+
             if fp in duplicates:
-                result = safe_copy(fp, os.path.join(DEST, '_Duplikate'), filename)
+                result = safe_copy(fp, os.path.join(DEST, '_Duplikate'), filename, dt)
                 if result == 'copied':
                     stats['dupes'] += 1
                 stats[result] += 1
                 continue
 
-            dt, source = get_best_date(fp, ext)
             stats[source] = stats.get(source, 0) + 1
             year = str(dt.year)
 
@@ -204,7 +211,7 @@ def main():
             else:
                 stats['videos'] += 1
 
-            result = safe_copy(fp, os.path.join(DEST, year, subdir), filename)
+            result = safe_copy(fp, os.path.join(DEST, year, subdir), filename, dt)
             stats[result] += 1
 
         except Exception as e:
